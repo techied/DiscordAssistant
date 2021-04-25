@@ -1,41 +1,37 @@
 import ai.picovoice.porcupine.Porcupine;
 import ai.picovoice.porcupine.PorcupineException;
+import com.mautini.assistant.api.AssistantClient;
+import com.mautini.assistant.exception.ConverseException;
 import net.dv8tion.jda.api.audio.AudioReceiveHandler;
 import net.dv8tion.jda.api.audio.AudioSendHandler;
 import net.dv8tion.jda.api.audio.CombinedAudio;
+import net.dv8tion.jda.api.audio.UserAudio;
 
-import java.io.ByteArrayOutputStream;
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+import java.util.HashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class AudioHandler implements AudioSendHandler, AudioReceiveHandler {
-    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+    ConcurrentLinkedQueue<Byte> inputStream = new ConcurrentLinkedQueue<Byte>();
     byte[] lastBytes;
-    Porcupine handle;
-    ConcurrentLinkedQueue<Byte> queue = new ConcurrentLinkedQueue<Byte>();
+    //    Porcupine wakeDetect;
+//    ConcurrentLinkedQueue<Byte> wakeQueue = new ConcurrentLinkedQueue<Byte>();
+//    ByteArrayOutputStream assistantQueue = new ByteArrayOutputStream();
+    AssistantClient assistantClient;
+//    private boolean listening = false;
+//    private int zeroes = 0;
 
-    short[] getNextAudioFrame() {
-        byte[] nextFrameBytes = new byte[1024];
-        for (int i = 0; i < 1024; i++) {
-            nextFrameBytes[i] = queue.poll();
-        }
-        short[] shortArray = new short[nextFrameBytes.length / 2];
-        ByteBuffer.wrap(nextFrameBytes).order(ByteOrder.BIG_ENDIAN).asShortBuffer().get(shortArray);
-        return shortArray;
-    }
+    private static final Porcupine.Builder porcupineBuilder = new Porcupine.Builder().setKeyword("hey google");
 
-    public AudioHandler() {
-        try {
-            handle = new Porcupine.Builder()
-                    .setKeyword("hey google")
-                    .build();
-            System.out.println("Using porcupine. Sample rate of " + handle.getSampleRate() + " and frame length of " + handle.getFrameLength());
-//            handle.delete();
-        } catch (PorcupineException e) {
-            e.printStackTrace();
-        }
+    HashMap<Long, AudioState> audioStates = new HashMap<Long, AudioState>();
+
+    public AudioHandler(AssistantClient assistantClient) {
+        this.assistantClient = assistantClient;
     }
 
     public byte[] getLastBytes() {
@@ -48,41 +44,170 @@ public class AudioHandler implements AudioSendHandler, AudioReceiveHandler {
     }
 
     @Override
-    public void handleCombinedAudio(CombinedAudio combinedAudio) {
-        byte[] data = combinedAudio.getAudioData(1.0f); // volume at 100% = 1.0 (50% = 0.5 / 55% = 0.55)
+    public boolean canReceiveUser() {
+        return true;
+    }
+
+    @Override
+    public void handleUserAudio(UserAudio userAudio) {
+        long userId = userAudio.getUser().getIdLong();
+        if (!audioStates.containsKey(userId)) {
+            try {
+                audioStates.put(userId, new AudioState(userId, assistantClient, porcupineBuilder.build()));
+            } catch (PorcupineException e) {
+                e.printStackTrace();
+            }
+        }
+
+        AudioState audioState = audioStates.get(userId);
+        byte[] data = userAudio.getAudioData(1.0f); // volume at 100% = 1.0 (50% = 0.5 / 55% = 0.55)
+
         try {
-            outputStream.write(data);
             lastBytes = data;
             for (int i = 0; i < data.length; i++) {
                 if (i % 6 == 0) {
-                    queue.add(data[i]);
+                    if (!audioState.isListening())
+                        audioState.getWakeQueue().add(data[i]);
+
+
+                    if (audioState.isListening()) {
+                        audioState.assistantQueue.write(data[i]);
+                        if (data[i] != 0) {
+                            audioState.setZeroes(0);
+//                            audioState.zeroes++;
+//                            System.out.println(audioState.zeroes);
+//                            if (audioState.zeroes > 20000) {
+//                                System.out.println("ended speech");
+//                                queueAudio(DiscordAssistant.assistantEndingBeep);
+//                                audioState.setListening(false);
+//                                System.out.println("request");
+//                                assistantClient.requestAssistant(audioState.getAssistantQueue().toByteArray());
+//                                audioState.assistantQueue.reset();
+//                                System.out.println("convert audio");
+//                                byte[] audioResponse = assistantClient.getAudioResponse();
+//                                AudioFormat oldFormat = new AudioFormat(24000f, 16, 1, true, false);
+//                                AudioFormat newFormat = new AudioFormat(48000f, 16, 2, true, true);
+//                                byte[] stream = convertAudio(audioResponse, oldFormat, newFormat);
+//                                System.out.println("queue audio");
+//                                queueAudio(stream);
+//                            }
+                        }
+                    }
                 }
             }
-
-//            System.out.println("Queue size: " + queue.size());
-
-            if (queue.size() > 1024) {
-                int keywordIndex = handle.process(getNextAudioFrame());
+            if (!audioState.isListening() && audioState.getWakeQueue().size() > 1024) {
+                int keywordIndex = audioState.getWakeEngine().process(audioState.getNextAudioFrame());
                 if (keywordIndex >= 0) {
                     System.out.println("got keyword");
+                    queueAudio(DiscordAssistant.assistantBeep);
+                    audioState.setListening(true);
+                    audioState.setZeroes(-50000);
                 }
             }
-
-
-        } catch (IOException | PorcupineException e) {
+        } catch (PorcupineException e) {
             e.printStackTrace();
         }
     }
 
     @Override
+    public void handleCombinedAudio(CombinedAudio combinedAudio) {
+
+        for (AudioState audioState : audioStates.values()) {
+            if (audioState.isListening()) {
+                audioState.zeroes++;
+                System.out.println(audioState.zeroes);
+                if (audioState.zeroes > 50) {
+                    System.out.println("ended speech");
+                    queueAudio(DiscordAssistant.assistantEndingBeep);
+                    audioState.setListening(false);
+                    System.out.println("request");
+                    try {
+                        assistantClient.requestAssistant(audioState.getAssistantQueue().toByteArray());
+                    } catch (ConverseException e) {
+                        e.printStackTrace();
+                    }
+                    audioState.assistantQueue.reset();
+                    System.out.println("convert audio");
+                    byte[] audioResponse = assistantClient.getAudioResponse();
+                    AudioFormat oldFormat = new AudioFormat(24000f, 16, 1, true, false);
+                    AudioFormat newFormat = new AudioFormat(48000f, 16, 2, true, true);
+                    byte[] stream = new byte[0];
+                    try {
+                        stream = convertAudio(audioResponse, oldFormat, newFormat);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                    System.out.println("queue audio");
+                    queueAudio(stream);
+                }
+            }
+        }
+
+//        byte[] data = combinedAudio.getAudioData(1.0f); // volume at 100% = 1.0 (50% = 0.5 / 55% = 0.55)
+//
+//        try {
+//            lastBytes = data;
+//            for (int i = 0; i < data.length; i++) {
+//                if (i % 6 == 0) {
+//                    if (!listening)
+//                        wakeQueue.add(data[i]);
+//
+//                    if (listening) {
+//                        assistantQueue.write(data[i]);
+//                        if (data[i] == 0) {
+//                            zeroes++;
+//                            if (zeroes > 20000) {
+//                                System.out.println("ended speech");
+//                                queueAudio(DiscordAssistant.assistantEndingBeep);
+//                                listening = false;
+//                                System.out.println("request");
+//                                assistantClient.requestAssistant(assistantQueue.toByteArray());
+//                                assistantQueue.reset();
+//                                System.out.println(assistantClient.getTextResponse());
+//                                System.out.println("convert audio");
+//                                byte[] audioResponse = assistantClient.getAudioResponse();
+//                                AudioFormat oldFormat = new AudioFormat(24000f, 16, 1, true, false);
+//                                AudioFormat newFormat = new AudioFormat(48000f, 16, 2, true, true);
+//                                byte[] stream = convertAudio(audioResponse, oldFormat, newFormat);
+//                                System.out.println("queue audio");
+//                                queueAudio(stream);
+//                            }
+//                        } else {
+//                            zeroes = 0;
+//                        }
+//                    }
+//                }
+//            }
+//            if (!listening && wakeQueue.size() > 1024) {
+//                int keywordIndex = wakeDetect.process(getNextAudioFrame());
+//                if (keywordIndex >= 0) {
+//                    System.out.println("got keyword");
+//                    queueAudio(DiscordAssistant.assistantBeep);
+//                    listening = true;
+//                    zeroes = -50000;
+//                }
+//            }
+//        } catch (PorcupineException | ConverseException | IOException e) {
+//            e.printStackTrace();
+//        }
+    }
+
+    private byte[] convertAudio(byte[] inputAudio, AudioFormat oldFormat, AudioFormat newFormat) throws IOException {
+        return AudioSystem.getAudioInputStream(newFormat, new AudioInputStream(new ByteArrayInputStream(assistantClient.getAudioResponse()), oldFormat, inputAudio.length)).readAllBytes();
+    }
+
+    @Override
     public boolean canProvide() {
-        // If we have something in our buffer we can provide it to the send system
-        return false;
+        return inputStream.size() > 3840;
     }
 
     @Override
     public ByteBuffer provide20MsAudio() {
-        return null;
+        ByteBuffer audio = ByteBuffer.allocate(3840);
+        for (int i = 0; i < audio.capacity(); i++) {
+            audio.put(inputStream.poll());
+        }
+        return audio.rewind();
     }
 
     @Override
@@ -90,7 +215,9 @@ public class AudioHandler implements AudioSendHandler, AudioReceiveHandler {
         return false;
     }
 
-    public ByteArrayOutputStream getOutputStream() {
-        return outputStream;
+    public void queueAudio(byte[] audio) {
+        for (byte b : audio) {
+            inputStream.add(b);
+        }
     }
 }
