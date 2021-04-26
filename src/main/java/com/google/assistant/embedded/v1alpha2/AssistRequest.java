@@ -130,7 +130,7 @@ private static final long serialVersionUID = 0L;
     public int getNumber() {
       return this.value;
     }
-  };
+  }
 
   public TypeCase
   getTypeCase() {
@@ -748,7 +748,7 @@ private static final long serialVersionUID = 0L;
         type_ = null;
       }
       typeCase_ = 1;
-      onChanged();;
+      onChanged();
       return configBuilder_;
     }
 
