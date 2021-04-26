@@ -102,6 +102,7 @@ public class AudioHandler implements AudioSendHandler, AudioReceiveHandler {
                     // The user didn't speak in the allowed time, do nothing
                     System.out.println("didn't speak");
                     audioState.setRecording(false);
+                    queueAudio(DiscordAssistant.assistantBeepNoSpeak);
 
                 }
                 if (audioState.zeroes > 50) {
@@ -134,7 +135,7 @@ public class AudioHandler implements AudioSendHandler, AudioReceiveHandler {
     }
 
     private byte[] convertAudio(byte[] inputAudio, AudioFormat oldFormat, AudioFormat newFormat) throws IOException {
-        return AudioSystem.getAudioInputStream(newFormat, new AudioInputStream(new ByteArrayInputStream(assistantClient.getAudioResponse()), oldFormat, inputAudio.length)).readAllBytes();
+        return AudioSystem.getAudioInputStream(newFormat, new AudioInputStream(new ByteArrayInputStream(inputAudio), oldFormat, inputAudio.length)).readAllBytes();
     }
 
     @Override
