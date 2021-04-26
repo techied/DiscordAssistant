@@ -62,16 +62,16 @@ public class AudioHandler implements AudioSendHandler, AudioReceiveHandler {
                         authenticationHelper
                                 .authenticate()
                                 .orElseThrow(() -> new AuthenticationException("Error during authentication"));
-//                        if (authenticationHelper.expired()) {
-//                            authenticationHelper
-//                                    .refreshAccessToken()
-//                                    .orElseThrow(() -> new AuthenticationException("Error refreshing access token"));
-//                        }
 
                         jedis.set(String.valueOf(userId), authenticationHelper.getCredentialJson());
                     }
                     String credentialJson = jedis.get(String.valueOf(userId));
                     AuthenticationHelper authenticationHelper = new AuthenticationHelper(DiscordAssistant.authenticationConf, credentialJson);
+                    if (authenticationHelper.expired()) {
+                        authenticationHelper
+                                .refreshAccessToken()
+                                .orElseThrow(() -> new AuthenticationException("Error refreshing access token"));
+                    }
                     DeviceRegister deviceRegister = new DeviceRegister(DiscordAssistant.deviceRegisterConf, authenticationHelper.getOAuthCredentials().getAccessToken());
                     deviceRegister.register();
                     AssistantClient assistantClient = new AssistantClient(authenticationHelper.getOAuthCredentials(), DiscordAssistant.assistantConf,
@@ -146,7 +146,6 @@ public class AudioHandler implements AudioSendHandler, AudioReceiveHandler {
                     System.out.println("convert audio");
                     byte[] audioResponse = audioState.getAssistantClient().getAudioResponse();
                     AudioFormat oldFormat = new AudioFormat(24000f, 16, 1, true, false);
-//                    AudioFormat newFormat = new AudioFormat(48000f, 16, 2, true, true);
                     byte[] stream = new byte[0];
                     try {
                         stream = convertAudio(audioResponse, oldFormat);
