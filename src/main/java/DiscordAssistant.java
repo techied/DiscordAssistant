@@ -29,27 +29,22 @@ public class DiscordAssistant implements EventListener {
         AuthenticationConf authenticationConf = ConfigBeanFactory.create(root.getConfig("authentication"), AuthenticationConf.class);
         DeviceRegisterConf deviceRegisterConf = ConfigBeanFactory.create(root.getConfig("deviceRegister"), DeviceRegisterConf.class);
         AssistantConf assistantConf = ConfigBeanFactory.create(root.getConfig("assistant"), AssistantConf.class);
-        AudioConf audioConf = ConfigBeanFactory.create(root.getConfig("audio"), AudioConf.class);
         IoConf ioConf = ConfigBeanFactory.create(root.getConfig("io"), IoConf.class);
 
-        // Authentication
         AuthenticationHelper authenticationHelper = new AuthenticationHelper(authenticationConf);
         authenticationHelper
                 .authenticate()
                 .orElseThrow(() -> new AuthenticationException("Error during authentication"));
 
-        // Check if we need to refresh the access token to request the api
         if (authenticationHelper.expired()) {
             authenticationHelper
                     .refreshAccessToken()
                     .orElseThrow(() -> new AuthenticationException("Error refreshing access token"));
         }
 
-        // Register Device model and device
         DeviceRegister deviceRegister = new DeviceRegister(deviceRegisterConf, authenticationHelper.getOAuthCredentials().getAccessToken());
         deviceRegister.register();
 
-        // Build the client (stub)
         AssistantClient assistantClient = new AssistantClient(authenticationHelper.getOAuthCredentials(), assistantConf,
                 deviceRegister.getDeviceModel(), deviceRegister.getDevice(), ioConf);
 
