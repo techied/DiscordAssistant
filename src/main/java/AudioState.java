@@ -24,7 +24,7 @@ public class AudioState {
     }
 
     ConcurrentLinkedQueue<Byte> wakeQueue = new ConcurrentLinkedQueue<Byte>();
-    boolean listening = false;
+    boolean recording = false;
     int zeroes = 0;
 
     public int getZeroes() {
@@ -45,12 +45,12 @@ public class AudioState {
         this.assistantQueue = assistantQueue;
     }
 
-    public boolean isListening() {
-        return listening;
+    public boolean isRecording() {
+        return recording;
     }
 
-    public void setListening(boolean listening) {
-        this.listening = listening;
+    public void setRecording(boolean listening) {
+        this.recording = listening;
     }
 
     public ConcurrentLinkedQueue<Byte> getWakeQueue() {
