@@ -1,24 +1,16 @@
-import ai.picovoice.porcupine.Porcupine;
 import ai.picovoice.porcupine.PorcupineException;
-import com.mautini.assistant.api.AssistantClient;
-import com.mautini.assistant.authentication.AuthenticationHelper;
-import com.mautini.assistant.device.DeviceRegister;
-import com.mautini.assistant.exception.AuthenticationException;
 import com.mautini.assistant.exception.ConverseException;
-import com.mautini.assistant.exception.DeviceRegisterException;
 import net.dv8tion.jda.api.audio.AudioReceiveHandler;
 import net.dv8tion.jda.api.audio.AudioSendHandler;
 import net.dv8tion.jda.api.audio.CombinedAudio;
 import net.dv8tion.jda.api.audio.UserAudio;
 import org.jetbrains.annotations.NotNull;
-import redis.clients.jedis.Jedis;
 
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -33,8 +25,6 @@ public class AudioHandler implements AudioSendHandler, AudioReceiveHandler {
     ConcurrentLinkedQueue<Byte> inputStream = new ConcurrentLinkedQueue<>();
     byte[] lastBytes;
 
-    private static final Porcupine.Builder porcupineBuilder = new Porcupine.Builder().setKeyword("hey google");
-
     HashMap<Long, AudioState> audioStates = new HashMap<>();
 
     @Override
@@ -47,41 +37,16 @@ public class AudioHandler implements AudioSendHandler, AudioReceiveHandler {
         return true;
     }
 
+    public void addUserAudioState(Long userId, AudioState audioState) {
+        audioStates.put(userId, audioState);
+    }
+
     @Override
     public void handleUserAudio(UserAudio userAudio) {
         long userId = userAudio.getUser().getIdLong();
-
-        AudioState audioState = null;
-        try {
-            if (audioStates.containsKey(userId)) {
-                audioState = audioStates.get(userId);
-            } else {
-                try (Jedis jedis = DiscordAssistant.pool.getResource()) {
-                    if (!jedis.exists(String.valueOf(userId))) {
-                        AuthenticationHelper authenticationHelper = new AuthenticationHelper(DiscordAssistant.authenticationConf);
-                        authenticationHelper
-                                .authenticate()
-                                .orElseThrow(() -> new AuthenticationException("Error during authentication"));
-
-                        jedis.set(String.valueOf(userId), authenticationHelper.getCredentialJson());
-                    }
-                    String credentialJson = jedis.get(String.valueOf(userId));
-                    AuthenticationHelper authenticationHelper = new AuthenticationHelper(DiscordAssistant.authenticationConf, credentialJson);
-                    if (authenticationHelper.expired()) {
-                        authenticationHelper
-                                .refreshAccessToken()
-                                .orElseThrow(() -> new AuthenticationException("Error refreshing access token"));
-                    }
-                    DeviceRegister deviceRegister = new DeviceRegister(DiscordAssistant.deviceRegisterConf, authenticationHelper.getOAuthCredentials().getAccessToken());
-                    deviceRegister.register();
-                    AssistantClient assistantClient = new AssistantClient(authenticationHelper.getOAuthCredentials(), DiscordAssistant.assistantConf,
-                            deviceRegister.getDeviceModel(), deviceRegister.getDevice(), DiscordAssistant.ioConf);
-                    audioState = new AudioState(userId, assistantClient, porcupineBuilder.build());
-                }
-            }
-        } catch (PorcupineException | URISyntaxException | IOException | AuthenticationException | DeviceRegisterException e) {
-            e.printStackTrace();
-        }
+        AudioState audioState = audioStates.get(userId);
+        if (audioState == null)
+            return;
 
         byte[] data = userAudio.getAudioData(1.0f);
 
