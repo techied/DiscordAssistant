@@ -18,7 +18,7 @@
         <log4j.version>2.14.1</log4j.version>
         <grpc.version>1.37.0</grpc.version>
         <google-auth.version>0.13.0</google-auth.version> <!-- Must be held here -->
-        <netty-tcnative.version>2.0.39.Final</netty-tcnative.version>
+        <netty-tcnative.version>2.0.43.Final</netty-tcnative.version>
         <typesafe.version>1.4.1</typesafe.version>
     </properties>
 
