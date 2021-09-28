@@ -36,7 +36,8 @@ public class SessionManager {
         byte[] data = userAudio.getAudioData(1.0f);
 
         try {
-            lastBytes = data;
+            lastBytes = data; //TODO: Can remove lastBytes
+            //TODO: Extract this into a metod in AssistantSession
             for (int i = 0; i < data.length; i++) {
                 if (i % 6 == 0) { // Ugh, magic numbers... but it works.
                     if (assistantSession.isRecording()) { // If we are recording a query, save it to the queue
@@ -49,6 +50,7 @@ public class SessionManager {
                     }
                 }
             }
+            //TODO: Extract this into a method in AssistantSession
             if (!assistantSession.isRecording() && assistantSession.getWakeQueue().size() > 1024) {
                 // Keyword was heard, begin audio recording
                 int keywordIndex = assistantSession.getWakeEngine().process(assistantSession.getNextAudioFrame());
