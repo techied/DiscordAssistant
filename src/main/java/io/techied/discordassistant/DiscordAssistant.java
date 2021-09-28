@@ -7,9 +7,9 @@ import com.mautini.assistant.config.IoConf;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigBeanFactory;
 import com.typesafe.config.ConfigFactory;
+import io.techied.discordassistant.db.EphemeralKVDB;
 import io.techied.discordassistant.db.KVDB;
 import io.techied.discordassistant.db.RedisKVDB;
-import io.techied.discordassistant.db.SQLiteKVDB;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Activity;
 import net.dv8tion.jda.api.events.GenericEvent;
@@ -42,11 +42,11 @@ public class DiscordAssistant implements EventListener {
         builder.addEventListeners(new MessageListener());
         builder.build();
         if (args.length < 2) {
-            database = new SQLiteKVDB();
+            database = new EphemeralKVDB();
         } else {
             database = new RedisKVDB(new URI(args[1]));
-            System.out.println(database.getInfo());
         }
+        System.out.println(database.getInfo());
     }
 
     public static void main(String[] args) throws LoginException, IOException, URISyntaxException {
