@@ -12,7 +12,6 @@ import net.dv8tion.jda.api.entities.GuildVoiceState;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import redis.clients.jedis.Jedis;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -33,11 +32,11 @@ public class MessageListener extends ListenerAdapter {
                 event.getGuild().getAudioManager().setSendingHandler(handler);
                 event.getGuild().getAudioManager().setReceivingHandler(handler);
                 event.getGuild().getAudioManager().openAudioConnection(state.getChannel());
-                try (Jedis jedis = DiscordAssistant.pool.getResource()) {
+                try {
                     for (Member member : state.getChannel().getMembers()) {
                         Long userId = member.getIdLong();
-                        if (jedis.exists(String.valueOf(userId))) {
-                            String credentialJson = jedis.get(String.valueOf(userId));
+                        if (DiscordAssistant.database.exists(String.valueOf(userId))) {
+                            String credentialJson = DiscordAssistant.database.get(String.valueOf(userId));
                             AuthenticationHelper authenticationHelper = new AuthenticationHelper(DiscordAssistant.authenticationConf, credentialJson);
                             if (authenticationHelper.expired()) {
                                 authenticationHelper
@@ -64,35 +63,31 @@ public class MessageListener extends ListenerAdapter {
             if (content.contains(" ")) {
                 String code = content.split(" ", 2)[1];
                 System.out.println(code);
-                try (Jedis jedis = DiscordAssistant.pool.getResource()) {
+                try {
                     AuthenticationHelper authenticationHelper = new AuthenticationHelper(DiscordAssistant.authenticationConf);
                     authenticationHelper
                             .authenticate(code)
                             .orElseThrow(() -> new AuthenticationException("Error during authentication"));
 
-                    jedis.set(String.valueOf(userId), authenticationHelper.getCredentialJson());
+                    DiscordAssistant.database.set(String.valueOf(userId), authenticationHelper.getCredentialJson());
                     event.getChannel().sendMessage("Authenticated successfully!").queue();
                 } catch (AuthenticationException | URISyntaxException | IOException e) {
                     e.printStackTrace();
                 }
             } else {
                 event.getMessage().addReaction("✅").queue();
-                try (Jedis jedis = DiscordAssistant.pool.getResource()) {
-                    if (jedis.exists(String.valueOf(userId))) {
-                        event.getAuthor().openPrivateChannel().queue(privateChannel -> privateChannel.sendMessage("You are already authenticated! Type \"clear\" to wipe your credentials.").queue());
-                    } else {
-                        event.getAuthor().openPrivateChannel().queue((privateChannel -> privateChannel.sendMessage(new EmbedBuilder().setTitle("Click to authenticate", "https://accounts.google.com/o/oauth2/v2/auth?scope=https://www.googleapis.com/auth/assistant-sdk-prototype&response_type=code&redirect_uri=urn:ietf:wg:oauth:2.0:oob&client_id=582422638744-0huvavhrdlmaavt8fore9f5jl9mr3o75.apps.googleusercontent.com").setDescription("Copy the code, then switch back here and type \"auth <code>\". Do not send this code anywhere but this private DM!").build()).queue()));
-                    }
+                if (DiscordAssistant.database.exists(String.valueOf(userId))) {
+                    event.getAuthor().openPrivateChannel().queue(privateChannel -> privateChannel.sendMessage("You are already authenticated! Type \"clear\" to wipe your credentials.").queue());
+                } else {
+                    event.getAuthor().openPrivateChannel().queue((privateChannel -> privateChannel.sendMessage(new EmbedBuilder().setTitle("Click to authenticate", "https://accounts.google.com/o/oauth2/v2/auth?scope=https://www.googleapis.com/auth/assistant-sdk-prototype&response_type=code&redirect_uri=urn:ietf:wg:oauth:2.0:oob&client_id=582422638744-0huvavhrdlmaavt8fore9f5jl9mr3o75.apps.googleusercontent.com").setDescription("Copy the code, then switch back here and type \"auth <code>\". Do not send this code anywhere but this private DM!").build()).queue()));
                 }
             }
         } else if (content.equalsIgnoreCase("clear")) {
-            try (Jedis jedis = DiscordAssistant.pool.getResource()) {
-                if (jedis.exists(event.getAuthor().getId())) {
-                    jedis.del(event.getAuthor().getId());
-                    event.getMessage().addReaction("✅").queue();
-                }
+            if (DiscordAssistant.database.exists(event.getAuthor().getId())) {
+                DiscordAssistant.database.del(event.getAuthor().getId());
+                event.getMessage().addReaction("✅").queue();
             }
-        } else if(content.equalsIgnoreCase("help")){
+        } else if (content.equalsIgnoreCase("help")) {
             event.getChannel().sendMessage("Commands:\n`auth`: sends instructions for connecting your google account to the bot\n`join`: joins your voice channel (must use auth first)\n`leave`: leaves your voice channel\n`clear`: clears your google connection from the database").queue();
         }
     }
