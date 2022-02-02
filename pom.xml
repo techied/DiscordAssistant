@@ -19,7 +19,7 @@
         <grpc.version>1.37.0</grpc.version>
         <google-auth.version>0.13.0</google-auth.version> <!-- Must be held here -->
         <netty-tcnative.version>2.0.39.Final</netty-tcnative.version>
-        <typesafe.version>1.4.1</typesafe.version>
+        <typesafe.version>1.4.2</typesafe.version>
     </properties>
 
     <dependencies>
